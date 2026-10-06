@@ -26,3 +26,5 @@ For a chat or streaming story, include a real OpenAI-compatible `/v1/chat/comple
 For an ingestion, MongoDB, or index story with no HTTP endpoint, include only its real existing CLI command(s), not invented curl commands. Do not add a Postman, Open WebUI, automated-test, database-inspection, or production-readiness checklist.
 
 After editing, ensure the story appears exactly once, every code fence is closed, and each command refers to a real implemented route or module. Report the section heading you updated.
+
+>And make sure that execution of this prompt does not result in executing the documented manual tests

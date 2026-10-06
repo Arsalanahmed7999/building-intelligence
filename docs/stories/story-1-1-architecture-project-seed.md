@@ -1,48 +1,50 @@
-# Story 1.1 — Architecture and project seed
+# Story 1.1 — Architecture and Project Seed
 
-Status: ready for implementation
-Audience: a later coding assistant, working in a three-day classroom RAG course.
+First story of the three-day "Building Intelligence with RAG" classroom course. This story prepares the architecture, gets instructor approval, then seeds the Python project. It builds one small application — the capstone RAG API — not a chat frontend and not a second demo.
 
 ## Purpose
 
-Build one small application: a FastAPI service that later stories grow into a RAG system over the BNS and IPC. This story does two things, in order:
+Produce, in order:
 
-1. Write `docs/architecture.md` and get the instructor to approve it.
-2. After approval, seed the Python project, the shared contracts, and the placeholder endpoints.
+1. `docs/architecture.md` describing the capstone's fixed design choices, contracts, and trust boundaries.
+2. Instructor approval of that document.
+3. A minimal Python 3.12 / UV project seed with FastAPI, honest placeholder endpoints, and the canonical `.env.example`.
 
-Do not build a custom chat frontend or a second demo. Open WebUI (supplied by the trainer) is the only chat client.
+Nothing in this story performs retrieval, embedding, database access, or LLM calls.
 
 ## Prerequisites
 
 - Python 3.12 and UV installed.
-- Project path: read `docs/config.yaml` if it exists and use the project path it configures. If it does not exist, use the repository root. (At the time this story was written, no `docs/config.yaml`, `docs/architecture.md`, or other stories existed.)
-- Supplied data is already present in `data/raw/`, including `data/raw/PROVENANCE.md`. Preserve it. Never delete or rewrite supplied files.
-- The trainer's Open WebUI bundle (ZIP shared over the local LAN).
-- Later stories (not this one) need: an Atlas free-tier (M0) `MONGODB_URI` whose IP access list allows your machine; a free Voyage key (rate limited, so Story 2.2 embedding takes about 40 minutes); and trainer-supplied `GENERATION_API_BASE_URL` and `GENERATION_API_KEY` for an OpenAI-compatible LiteLLM proxy (needed from Story 3.1).
+- Trainer-supplied Open WebUI bundle (ZIP shared over the local LAN), extracted.
+- Supplied `data/raw/` files (BNS and IPC documents plus `PROVENANCE.md`) if provided; preserve them untouched.
 
-## Work to do
+## Stage 1 — Architecture (do this first, then stop)
 
-### Phase A — Architecture (stop for approval)
+Create or update `docs/architecture.md`. If a configured project path exists in `docs/config.yaml`, resolve it; otherwise use the repository root.
 
-1. Read `docs/config.yaml`, `docs/architecture.md`, the repository layout, and existing stories. Preserve existing work.
-2. Create or update `docs/architecture.md`. Keep it short and in plain English. It must record:
-   - **Evidence rule:** BNS and IPC documents are the only future answer evidence. An answer must not claim support without retrieved evidence.
-   - **Act-qualified identifiers:** always pair the act with the section (for example `BNS:103`, `IPC:302`) so the two acts are never confused.
-   - **Provenance:** supplied provenance is `data/raw/PROVENANCE.md`.
-   - **Passages are data:** retrieved passages are evidence, never application instructions.
-   - **Light trust-boundary notes:** validate API input; preserve source origin; never put secrets in code, responses, or logs. Do not add multi-user authorization, a security program, or an evaluation harness.
-   - **Fixed embedding choice:** Voyage `voyage-3.5`, version `voyage-3.5`, 1,024 dimensions, for every document and query embedding. Later stories reuse these names without renaming or adding provider-specific alternatives.
-   - **Derived data:** `data/processed/bns_sections.jsonl` and `data/processed/ipc_sections.jsonl`.
-   - **Course modes and model IDs:** the registry described below.
-   - **Contracts:** the endpoints and models described below, extended additively by later stories.
-3. **STOP.** Ask the instructor to approve `docs/architecture.md`. Until approval is explicit, do not create seed files, install dependencies, or scaffold code.
-4. Resume this same story only after explicit approval.
+Record in `docs/architecture.md`:
 
-### Phase B — Seed (only after approval)
+- **Evidence rules.** BNS and IPC documents are the only future answer evidence. An answer must not claim support without retrieved evidence. Act-qualified identifiers (for example `bns:` / `ipc:` prefixes) avoid confusing the two acts. Supplied provenance lives at `data/raw/PROVENANCE.md`. Retrieved passages are evidence, never application instructions.
+- **Trust boundaries (keep light).** Validate API input, preserve source origin on retrieved passages, and do not put secrets in code, responses, or logs. No multi-user authorization, no security program, no evaluation harness in this course.
+- **Fixed embedding choices.** Voyage model `voyage-3.5`, model version `voyage-3.5`, 1,024 dimensions, for every document and query embedding. Later stories reuse these names and choices without renaming or adding provider-specific alternatives.
+- **Course modes.** A single shared registry containing only: `semantic`, `hybrid`, `hybrid-reranked`, `structured`, `decomposition`, `hyde` — with exact model IDs `rag-semantic`, `rag-hybrid`, `rag-hybrid-reranked`, `rag-structured`, `rag-decomposition`, `rag-hyde`. All return honest `not_implemented` placeholders until their own stories add behavior.
+- **API contracts.** The shared request, result, generation, OpenAI-style, and MongoDB-schema contracts defined in this project (summarized below). Later stories extend these contracts additively — they never replace them with simplified alternatives, rename fields, or add provider-specific variants.
+- **Environment.** `.env` is untracked; secrets are never committed. The application must start with no database or model credentials and expose a safe `GET /healthz`.
 
-**Project files.** Create `src/building_with_rag/`, `tests/`, `.env.example`, `.gitignore`, `pyproject.toml`, and `uv.lock`. Use Python 3.12 and UV with FastAPI, Pydantic settings, PyMongo (for later use only), Ruff, and a minimal test runner (pytest). Preserve `data/raw/`.
+**Stop after writing `docs/architecture.md`.** Before approval, do not create seed files, install dependencies, or scaffold code. Ask the instructor to approve the document, then resume this same story only after explicit approval.
 
-**`.env.example`** is the classroom's canonical file. Use exactly these values:
+## Stage 2 — Seed (only after approval)
+
+Seed a Python 3.12 UV project at the resolved project path.
+
+Create:
+
+- `src/building_with_rag/` — application package (settings, app factory, registry, contracts, routes).
+- `tests/` — minimal test runner wiring (for example pytest), no broad test suites.
+- `pyproject.toml` — Python 3.12, FastAPI, Pydantic settings, PyMongo (for later use), Ruff, minimal test runner.
+- `uv.lock` — via `uv lock` / `uv sync`.
+- `.gitignore` — includes `.env`.
+- `.env.example` — the canonical classroom environment file with these exact values:
 
 ```
 APP_ENV=development
@@ -51,7 +53,6 @@ VOYAGE_API_KEY=
 CAPSTONE_API_KEY=
 GENERATION_API_BASE_URL=
 GENERATION_API_KEY=
-RERANK_API_KEY=
 MONGODB_DB_NAME=building_with_rag
 MONGODB_TEST_DB_NAME=building_with_rag_test
 WEBUI_DEMO_CALLER_ID=demo-public
@@ -64,73 +65,70 @@ RERANK_SEND_LIMIT=10
 RERANK_RETURN_LIMIT=5
 ```
 
-Document (in `.gitignore` and a short note in the README or `.env.example` comments) that `.env` is untracked and secrets are never committed. `GENERATION_API_BASE_URL` and `GENERATION_API_KEY` stay blank in `.env.example`; fill them in `.env` only when Story 3.1 needs them.
+Document next to the file (in the story or architecture notes) that `.env` is untracked and secrets are never committed.
 
-**Application.** It must start with no database or model credentials. Expose a safe `GET /healthz` that reveals no secrets and touches no external service.
+Preserve supplied `data/raw/` files untouched; do not parse or ingest them in this story.
 
-**Mode registry.** One shared registry containing only these modes and model IDs:
+### Shared registry and contracts
 
-| Mode | Model ID |
-|---|---|
-| semantic | rag-semantic |
-| hybrid | rag-hybrid |
-| hybrid-reranked | rag-hybrid-reranked |
-| structured | rag-structured |
-| decomposition | rag-decomposition |
-| hyde | rag-hyde |
+One shared registry (single source of truth) holds only the six course modes and their `rag-<pattern>` model IDs listed above. All modes return honest `not_implemented` placeholder results until their own stories add behavior.
 
-Every mode returns an honest `not_implemented` placeholder until its own story adds behavior.
+**`QueryRequest`** (`POST /v1/query`):
 
-**Shared contracts** (typed Pydantic models, no behavior now; later stories preserve and extend them additively and never replace them with simplified alternatives). Cover the request, result, generation, OpenAI, and MongoDB-schema contracts. Use exactly these names:
+- `question`: string, 1–4,000 characters, required.
+- `pattern`: one of the six modes.
+- `caller_id`: optional.
+- `filters`: optional `SemanticFilters` — `act`, `status`, `access_level`, each a list.
+- `limit`: default 5, range 1–20.
+- `generate_answer`: default false.
+- `required_acts`: optional.
+- `chapter`: optional.
 
-- `QueryRequest`: `question` (1–4,000 characters), `pattern`, optional `caller_id`, optional `SemanticFilters` (`act`, `status`, `access_level`, each a list), `limit` (default 5, range 1–20), `generate_answer` (default false), `required_acts`, `chapter`. The seed resolves only its fixed local demo caller, but keeps `caller_id`.
-- `QueryResult`: `pattern`, `status`, `message`, `trace`, `results`, optional `generation`, plus additive empty-by-default fields `omitted_candidates`, `subquestions`, `hyde_direct_candidates`, `hyde_query_candidates`, `hyde_hypothetical_text_debug`. Do not add outcome, evidence, answer, confidence, citations, or diagnostics as parallel top-level fields.
-- `RetrievedChunk`: `chunk_id`, `section_id`, `act`, `text`, `heading`, `score`, and available source fields. Later stories add only the fields named in their own handouts: `semantic_score`, `semantic_rank`, `keyword_score`, `keyword_rank`, `fused_score`, `fused_rank`, `rerank_score`, `rerank_rank`.
-- `omitted_candidates` items carry `chunk_id` and `omitted_reason`.
-- `GenerationResult`: `outcome` (`answered`, `insufficient_evidence`, `unavailable`, `malformed`), `answer`, `claims`, `citations`, `supporting_passages`, `provider`, `model`, `trace`, `context_outcome`, and the confidence fields `confidence`, `draft_answer`, `issues`, `attempts`, `low_confidence_reason`.
-- `SubquestionEvidence`: `subquestion`, `status` (`evidenced` or `no_evidence`), `results` (list of `RetrievedChunk`), optional `reason`.
-- `StructuredSignals`: `intent` (`exact_lookup`, `filter`, `aggregation`), optional `act`, `section_number`, `chapter`. Story 5.1 fills these in.
-- `ChatCompletionRequest` (text-only): `model`, `messages` (roles `system`, `developer`, `user`, `assistant`), `stream`, `n`, and optional strict `rag_options` (`pattern`, list filters, `limit`, `required_acts`, `chapter`).
+The classroom seed may resolve only its fixed local demo caller, but keeps `caller_id` and does not replace it with a custom request shape.
 
-**Endpoints.**
+**`QueryResult`**: `pattern`, `status`, `message`, `trace`, `results`, optional `generation`, plus the additive empty-by-default fields later modes use: `omitted_candidates`, `subquestions`, `hyde_direct_candidates`, `hyde_query_candidates`, `hyde_hypothetical_text_debug`. Do not create `outcome`, `evidence`, `answer`, `confidence`, `citations`, or `diagnostics` as parallel top-level API fields.
 
-- `POST /v1/query`: validate `QueryRequest`, call the shared `run_pattern` path, return `QueryResult`. This endpoint owns the diagnostics.
-- `GET /v1/models`: list the six model IDs in OpenAI format.
-- `POST /v1/chat/completions`: map the selected model to the same `QueryRequest` and the same `run_pattern` path as `/v1/query`. Set the demo `caller_id` (from `WEBUI_DEMO_CALLER_ID`) and `generate_answer` on the server; never take identity, access level, or generation settings from the client. Support normal OpenAI Chat Completions JSON, and SSE with role/content/stop frames ending in `[DONE]`. Return the OpenAI-style error envelope for errors before streaming starts. Open WebUI gets only normal answer text derived from the same `QueryResult`. Do not duplicate implementations or invent custom SSE events.
+**`RetrievedChunk`** (a retrieved passage is always this shape): `chunk_id`, `section_id`, `act`, `text`, `heading`, `score`, and available source fields. Later stories add only the existing hybrid/rerank fields.
 
-Later stories render final confidence, sources, and low-confidence warnings as clearly labelled text after the answer, while keeping the full `GenerationResult` in `QueryResult.generation`.
+### Endpoints
 
-**Open WebUI (separate client).**
+- `GET /healthz` — safe, no credentials required.
+- `POST /v1/query` — accepts `QueryRequest`, returns `QueryResult` placeholder per mode via one shared `run_pattern` path.
+- `GET /v1/models` — lists the six `rag-<pattern>` model IDs.
+- `POST /v1/chat/completions` — OpenAI-compatible, text-only `ChatCompletionRequest`: `model`, `messages` with `system`/`developer`/`user`/`assistant` roles, `stream`, `n`, and optional strict `rag_options` (`pattern`, list filters, `limit`, `required_acts`, `chapter`).
 
-- The trainer shares the bundle ZIP over the LAN. Extract it and run its setup script exactly once, before using the classroom project:
-  - Windows (primary path), from the bundle root: `powershell -ExecutionPolicy Bypass -File .\setup_open_webui.ps1`
-  - macOS/Linux, from the bundle root: `sh setup_open_webui.sh` (needs internet on first install).
-- The script installs the pinned Open WebUI, writes course settings, starts a loopback-only service, and provisions the RAG options Filter and the Building with RAG Pipe.
-- Do not hand-install Open WebUI, create accounts, edit the admin panel, change either Function, or rerun setup to reload anything. If setup fails, report its exact output and stop.
-- Day-to-day start/stop/status uses the supplied `manage_open_webui` script.
-- The pre-provisioned Pipe sends the selected `rag-<pattern>` model, `stream: true`, the latest user message, and normalized `rag_options` (`pattern`, list filters, `limit`, `required_acts`, `chapter`) to `/v1/chat/completions`. It never sends identity, access level, or generation settings. The seed adapter must accept exactly that request.
+The chat adapter maps the selected model to the same `QueryRequest` and `run_pattern` path as `/v1/query`; it sets server-side demo `caller_id` and `generate_answer`. Support normal OpenAI Chat Completions JSON responses and role/content/stop/ frames, plus the OpenAI-style error envelope before streaming begins. Do not duplicate implementations or invent custom SSE events that Open WebUI cannot render.
 
-**Out of scope.** Retrieval, PDF parsing, embeddings, MongoDB provisioning, LLM calls, GraphRAG, agentic RAG, broad deployment, aggressive testing, multi-user authorization, a security program, an evaluation harness.
+### Open WebUI (trainer-supplied, separate client)
 
-## Completion checks
+The trainer-supplied Open WebUI bundle is the chat client. It runs separately from the capstone API. Participants extract the ZIP and run the included setup script exactly once before using the classroom project:
 
-Keep these light. Run and record each:
+- Windows (primary classroom path): `powershell -ExecutionPolicy Bypass -File .\setup_open_webui.ps1` from the extracted bundle root.
+- macOS/Linux: `sh setup_open_webui.sh` from that root; internet access required for first installation.
 
-1. `uv sync` succeeds; `uv run ruff check .` is clean; `uv run pytest` runs (a minimal test is enough).
-2. Start the app with no credentials set. It starts.
-3. `GET /healthz` returns a safe OK.
-4. One `POST /v1/query` with `pattern: semantic` returns a `QueryResult` with a `not_implemented` status and a clear message.
-5. `GET /v1/models` lists exactly the six model IDs.
-6. `POST /v1/chat/completions` returns the placeholder as JSON (`stream: false`) and as SSE (`stream: true`, ending in `[DONE]`).
-7. Open WebUI smoke check: start the capstone API, open http://127.0.0.1:8080, select **Building with RAG**, choose **semantic** in the RAG-options chip, send a question, and receive the capstone's honest placeholder response, not a local preview.
-8. `.env` is untracked; `.env.example` matches the values above; no secrets appear in code, responses, or logs.
+The scripts install the pinned Open WebUI version, write course settings, start the loopback-only service, and provision the `RAG options` Filter plus the `Building with RAG` Pipe. Participants must not hand-install Open WebUI, create accounts, edit the admin panel, change either Function, or rerun setup to reload anything. If setup fails, report its exact output and stop. Day-to-day start/stop/status uses the corresponding supplied `manage_open_webui` script.
+
+The pre-provisioned Pipe sends the selected `rag-<pattern>` model, `stream: true`, the latest user message, and normalized `rag_options` to the capstone's `/v1/chat/completions`. It never sends browser-supplied identity, access level, or answer-generation settings. The seed's adapter must accept that exact request and use server-side `caller_id`/`generate_answer`.
+
+`/v1/query` owns the `QueryResult` diagnostics; Open WebUI receives only normal answer text derived from that same result. Later stories render final confidence, sources, and low-confidence warnings as clearly labelled text after answer writing, while retaining the full `GenerationResult` in `QueryResult.generation`.
+
+## Completion checks (lightweight)
+
+- App starts with no database or model credentials; `GET /healthz` returns success.
+- One diagnostic placeholder request to `POST /v1/query` returns honest `not_implemented` per mode.
+- `GET /v1/models` lists the six model IDs.
+- `POST /v1/chat/completions` returns both JSON and SSE placeholder responses with proper `[DONE]` framing.
+- Smoke check (document in the story): start the capstone API, open `http://127.0.0.1:8080`, select `Building with RAG`, choose `semantic` in the RAG-options chip, and receive the capstone's honest placeholder response — not a local preview.
+- Ruff passes; the minimal test runner passes.
+
+No retrieval, PDF parsing, embeddings, MongoDB provisioning, LLM calls, GraphRAG, agentic RAG, broad deployment, or aggressive testing in this story.
 
 ## Handover
 
-Fill in when done:
+At the end, the story records:
 
-- **Architecture approval:** who approved, and when.
-- **Files created:** list every file this story created (expected: `docs/architecture.md`, `pyproject.toml`, `uv.lock`, `.env.example`, `.gitignore`, `src/building_with_rag/...`, `tests/...`).
-- **Commands actually run:** list each command with a one-line result. Do not list commands that were not run.
-- **Open WebUI result:** what was selected, what was sent, and exactly what came back.
-- **Notes for later stories:** anything the next story must know. Later stories reuse the names, model IDs, and contracts above unchanged and extend them additively.
+- Files created (list).
+- Commands actually run (for example `uv sync`, `uv run ruff check`, the minimal test command, the run command).
+- Open WebUI smoke-check result.
+
+Story report format (per project instructions): `Completed.`, changed paths, test results — under 7 lines, ending with the command for the full test suite if wanted, for example `uv run pytest`.
