@@ -195,7 +195,6 @@ def run_semantic(request: QueryRequest) -> QueryResult:
         global _ready
         _ready = False  # re-check readiness after any failure
         raise
-    ignored = ["generate_answer: no answer is generated in semantic mode"] if request.generate_answer else []
     trace = {
         "mode": "semantic",
         "query": request.question,
@@ -210,7 +209,6 @@ def run_semantic(request: QueryRequest) -> QueryResult:
         "filters": filters,
         "caller_id": request.caller_id or get_settings().webui_demo_caller_id,
         "result_count": len(results),
-        "ignored": ignored,
         "unresolved_hits": unresolved,
     }
     if results:

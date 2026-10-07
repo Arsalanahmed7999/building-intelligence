@@ -206,3 +206,46 @@ Expected: HTTP 503, code `retrieval_not_ready`; not `no_results`.
 ### Other modes unchanged
 
 Run the hybrid query from Story 1.1. Expected: still `not_implemented`. Chat with `rag-semantic` still returns its placeholder.
+
+
+## Story 3.1 — Grounded Answer Generation
+
+What it adds: `/v1/query` with `pattern: "semantic"` and `generate_answer: true` returns a grounded, non-streaming answer in `generation` with resolved citations, or an honest `insufficient_evidence`, `unavailable`, or `malformed` outcome.
+
+Prerequisite: Story 2.3 prerequisites, plus `.env` has `GENERATION_API_BASE_URL`, `GENERATION_API_KEY`, `GENERATION_MODEL_NAME`; API running.
+
+### Answerable question
+
+```bash
+curl -s http://127.0.0.1:8000/v1/query -H "Content-Type: application/json" \
+  -d '{"question": "What is the punishment for theft under the BNS?", "pattern": "semantic", "limit": 5, "generate_answer": true}' \
+  | jq '{status, g: (.generation | {outcome, model, provider, context_outcome, text: (.text[:300]), claims: [.claims[] | {t: .text[:80], e: .evidence_labels}], citations: [.citations[] | {label, chunk_id, section_id, act, heading}], trace}), ctx: [.results[] | {chunk_id, section_id, act, score}]}'
+```
+
+Expected: `"status":"ok"`, `outcome` `answered`, non-empty `text`, claims with labels, `citations` whose `chunk_id`s appear in `ctx`; `section_id` prefix matches `act`.
+
+### Unsupported question
+
+```bash
+curl -s http://127.0.0.1:8000/v1/query -H "Content-Type: application/json" \
+  -d '{"question": "What is the GST rate on restaurant services?", "pattern": "semantic", "limit": 5, "generate_answer": true}' \
+  | jq '{status, outcome: .generation.outcome, text: .generation.text, claims: (.generation.claims | length), citations: (.generation.citations | length), n: (.results | length)}'
+```
+
+Expected: `outcome` `insufficient_evidence`, empty `text`, 0 claims and citations, `n` still > 0.
+
+### Generation unavailable (failure)
+
+Start the API with `GENERATION_API_KEY=` empty, repeat the unsupported-question command.
+
+Expected: HTTP 200, `outcome` `unavailable`, empty `text`, `n` > 0.
+
+### Generation off by default
+
+```bash
+curl -s http://127.0.0.1:8000/v1/query -H "Content-Type: application/json" \
+  -d '{"question": "What is theft?", "pattern": "semantic", "limit": 3}' \
+  | jq '{status, generation}'
+```
+
+Expected: `"status":"ok"`, `generation` null.

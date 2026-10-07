@@ -129,7 +129,7 @@ Flow: validate → scope filters → embed query → `$vectorSearch` → resolve
 - Scope: `access_level` fixed to `["public"]`; caller lists only narrow (`$in` inside the `$vectorSearch` `filter`).
 - Embed: raw question, `voyage-3.5`, `input_type="query"`, 1,024 dims checked.
 - Search: index `vector_index`, `limit` = request limit, `numCandidates = clamp(limit*10, 50, 200)`. Chunks (not de-duplicated sections) in descending score order; unresolved hits are omitted and counted in `trace.unresolved_hits`.
-- Outcomes: `ok` (passages), `no_results` (HTTP 200, filters match nothing; no score cutoff). 503 `retrieval_not_ready` (missing credentials, index absent/not queryable, empty or mismatched embeddings); 502 `retrieval_upstream_error` (Voyage/MongoDB failure). Scores rank similarity only, not correctness. `generate_answer` is ignored (noted in `trace.ignored`).
+- Outcomes: `ok` (passages), `no_results` (HTTP 200, filters match nothing; no score cutoff). 503 `retrieval_not_ready` (missing credentials, index absent/not queryable, empty or mismatched embeddings); 502 `retrieval_upstream_error` (Voyage/MongoDB failure). Scores rank similarity only, not correctness. `generate_answer: true` adds a grounded answer (Story 3.1, below).
 - Added optional `RetrievedChunk` fields: `chunk_index`, `act_label`, `status`, `chapter`, `chapter_title`, `section_number`, `source_pdf`, `source_sha256`, `needs_review`.
 
 Diagnostic (text truncated):
@@ -137,3 +137,15 @@ Diagnostic (text truncated):
 ```bash
 curl -s http://127.0.0.1:8000/v1/query -H "Content-Type: application/json"   -d '{"question": "What is the punishment for theft?", "pattern": "semantic", "limit": 3}'   | jq '{status, trace, results: [.results[] | {chunk_id, section_id, act, heading, score, text: .text[:80]}]}'
 ```
+
+## Context and answer boundaries (Story 3.1)
+
+Modules: `generation/context.py`, `generation/answer.py`; called from `routes/query.py` only when `pattern: "semantic"` and `generate_answer: true`.
+
+Flow: semantic `QueryResult.results` → bounded labelled context (`E1`…, max 5 passages / 12,000 chars, no mid-passage cuts) → one OpenAI-compatible `POST {GENERATION_API_BASE_URL}/chat/completions` (`temperature: 0`, 30 s timeout, no retries) → strict JSON parse → citations resolved from the supplied context only.
+
+- Outcomes (`GenerationResult.outcome`): `answered` (text, claims, citations, supporting passages), `insufficient_evidence` (also when no passages; model call skipped), `unavailable` (missing settings, timeout, connection, non-2xx), `malformed` (non-JSON, missing `choices`, unknown label, invalid shape; no repair or retry). Non-answered outcomes have empty `text`, claims, citations, and supporting passages.
+- Added optional `GenerationResult` fields: `outcome`, `claims`, `citations`, `supporting_passages`, `provider`, `trace`, `context_outcome`; `text`/`model` kept.
+- Evidence blocks are untrusted source text, never instructions. No legal-applicability claims beyond the supplied BNS/IPC documents.
+- `unavailable`/`malformed` still return HTTP 200 with retrieval `results`; `status` stays the retrieval status. The model `reason` lives only in `generation.trace`. No prompt text or secrets in trace.
+- Chat (`/v1/chat/completions`) keeps its placeholder; streaming, confidence, and Open WebUI rendering are deferred to Story 3.2.
