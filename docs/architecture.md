@@ -42,7 +42,7 @@ One shared registry (single source of truth) holds only:
 | decomposition | `rag-decomposition` |
 | hyde | `rag-hyde` |
 
-All modes return honest `not_implemented` placeholder results until their own stories add behavior.
+`semantic` is real on `POST /v1/query` (Story 2.3); chat for `rag-semantic` and every other mode still return honest `not_implemented` placeholders until their own stories.
 
 ## API contracts
 
@@ -118,3 +118,22 @@ Each record has 14 fields: `section_id`, `act`, `act_label`, `status`, `chapter`
 - **IPC footnotes**: Amendment footnotes and historical annotations are interleaved with section text and may appear as inline artifacts in section `text`.
 - **BNS chapter markers**: Chapter boundaries are detected from `CHAPTER <roman>` lines in the body text. The BNS index (pages 2–19) provides section headings; the correspondence table (pages 20–73) is skipped.
 - **Source-hash safety rule**: If a source PDF hash changes, the corpus for that act is regenerated as an atomic replacement. Records from different PDF versions are never mixed in one corpus file.
+
+## Semantic retrieval (Story 2.3)
+
+Module: `src/building_with_rag/retrieval/semantic.py`; routed from `routes/query.py` for `pattern: "semantic"` only.
+
+Flow: validate → scope filters → embed query → `$vectorSearch` → resolve chunk/section → `QueryResult`.
+
+- Validate: question trimmed (non-empty); `SemanticFilters` forbids unknown fields and accepts only known `act`/`status`/`access_level` strings; `caller_id` must be omitted or equal `WEBUI_DEMO_CALLER_ID`; `required_acts`/`chapter` are rejected. All HTTP 422.
+- Scope: `access_level` fixed to `["public"]`; caller lists only narrow (`$in` inside the `$vectorSearch` `filter`).
+- Embed: raw question, `voyage-3.5`, `input_type="query"`, 1,024 dims checked.
+- Search: index `vector_index`, `limit` = request limit, `numCandidates = clamp(limit*10, 50, 200)`. Chunks (not de-duplicated sections) in descending score order; unresolved hits are omitted and counted in `trace.unresolved_hits`.
+- Outcomes: `ok` (passages), `no_results` (HTTP 200, filters match nothing; no score cutoff). 503 `retrieval_not_ready` (missing credentials, index absent/not queryable, empty or mismatched embeddings); 502 `retrieval_upstream_error` (Voyage/MongoDB failure). Scores rank similarity only, not correctness. `generate_answer` is ignored (noted in `trace.ignored`).
+- Added optional `RetrievedChunk` fields: `chunk_index`, `act_label`, `status`, `chapter`, `chapter_title`, `section_number`, `source_pdf`, `source_sha256`, `needs_review`.
+
+Diagnostic (text truncated):
+
+```bash
+curl -s http://127.0.0.1:8000/v1/query -H "Content-Type: application/json"   -d '{"question": "What is the punishment for theft?", "pattern": "semantic", "limit": 3}'   | jq '{status, trace, results: [.results[] | {chunk_id, section_id, act, heading, score, text: .text[:80]}]}'
+```

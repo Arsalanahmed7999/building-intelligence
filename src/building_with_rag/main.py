@@ -13,7 +13,6 @@ from building_with_rag.contracts import (
     ChatCompletionRequest,
     QueryRequest,
     QueryResult,
-    SemanticFilters,
 )
 from building_with_rag.modes import MODE_REGISTRY, MODEL_TO_MODE
 from building_with_rag.service import run_pattern

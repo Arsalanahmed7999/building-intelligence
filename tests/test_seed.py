@@ -12,7 +12,7 @@ def test_healthz():
 
 
 def test_query_placeholder():
-    r = client.post("/v1/query", json={"question": "What is murder?", "pattern": "semantic"})
+    r = client.post("/v1/query", json={"question": "What is murder?", "pattern": "hybrid"})
     body = r.json()
     assert r.status_code == 200
     assert body["status"] == "not_implemented" and body["message"]

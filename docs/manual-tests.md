@@ -30,7 +30,7 @@ curl -s http://127.0.0.1:8000/v1/query \
   -d '{"question": "What is theft?", "pattern": "semantic"}'
 ```
 
-Expected: `"status":"not_implemented"`, `"message":"Pattern 'semantic' is not implemented yet..."`.
+Expected (Story 2.3, needs `.env` credentials): `"status":"ok"` with ranked passages in `results`; see `docs/architecture.md` for the `jq` diagnostic command.
 
 ### Query — hybrid
 
@@ -153,3 +153,56 @@ uv run python scripts/extract_sections.py
 ```
 
 Expected: prints "BNS corpus up to date — skipping" and "IPC corpus up to date — skipping". No records appended or overwritten.
+## Story 2.3 — Semantic Retrieval
+
+What it adds: `/v1/query` with `pattern: "semantic"` returns ranked BNS/IPC passages via Voyage embedding + MongoDB `$vectorSearch`.
+
+Prerequisite: Stories 2.1–2.2 data loaded, `.env` has `MONGODB_URI` and `VOYAGE_API_KEY`, API running.
+
+### Natural-language question
+
+```bash
+curl -s http://127.0.0.1:8000/v1/query -H "Content-Type: application/json" \
+  -d '{"question": "What is the punishment for theft?", "pattern": "semantic", "limit": 3}' \
+  | jq '{status, trace, results: [.results[] | {chunk_id, section_id, act, heading, score, text: .text[:80]}]}'
+```
+
+Expected: `"status":"ok"`, 1–3 results with non-increasing `score`, populated `trace`.
+
+### No results (filters match nothing)
+
+```bash
+curl -s http://127.0.0.1:8000/v1/query -H "Content-Type: application/json" \
+  -d '{"question": "theft", "pattern": "semantic", "filters": {"act": ["IPC_1860"], "status": ["in_force"]}}' \
+  | jq '{status, n: (.results | length)}'
+```
+
+Expected: HTTP 200, `"status":"no_results"`, `n` 0.
+
+### Invalid filter (failure)
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/v1/query -H "Content-Type: application/json" \
+  -d '{"question": "theft", "pattern": "semantic", "filters": {"act": {"$ne": "x"}}}'
+```
+
+Expected: `422`.
+
+### Limit out of range (failure)
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/v1/query -H "Content-Type: application/json" \
+  -d '{"question": "theft", "pattern": "semantic", "limit": 21}'
+```
+
+Expected: `422`.
+
+### Missing credentials (failure)
+
+Start the API with `VOYAGE_API_KEY=` empty, repeat the natural-language question.
+
+Expected: HTTP 503, code `retrieval_not_ready`; not `no_results`.
+
+### Other modes unchanged
+
+Run the hybrid query from Story 1.1. Expected: still `not_implemented`. Chat with `rag-semantic` still returns its placeholder.
