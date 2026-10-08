@@ -67,6 +67,13 @@ class RetrievedChunk(BaseModel):
     source_pdf: str | None = None
     source_sha256: str | None = None
     needs_review: bool | None = None
+    # Story 4.1 hybrid route details; None when a route did not return the chunk (or in semantic mode).
+    semantic_score: float | None = None
+    semantic_rank: int | None = None
+    keyword_score: float | None = None
+    keyword_rank: int | None = None
+    fused_score: float | None = None
+    fused_rank: int | None = None
 
 
 class GenerationClaim(BaseModel):
@@ -96,6 +103,12 @@ class GenerationResult(BaseModel):
     provider: str | None = None
     trace: dict = Field(default_factory=dict)
     context_outcome: Literal["assembled", "empty"] | None = None
+    # Story 3.2 additive fields.
+    confidence: Literal["high", "low"] | None = None
+    issues: list[dict] = Field(default_factory=list)
+    attempts: list[dict] = Field(default_factory=list)
+    draft_answer: str = ""
+    low_confidence_reason: str = ""
 
 
 class QueryResult(BaseModel):
@@ -113,8 +126,14 @@ class QueryResult(BaseModel):
     hyde_hypothetical_text_debug: str | None = None
 
 
+class ChatRagFilters(BaseModel):
+    act: list[str] = Field(default_factory=list)
+    status: list[str] = Field(default_factory=list)
+
+
 class ChatRagOptions(BaseModel):
     pattern: Pattern = Pattern.SEMANTIC
+    filters: ChatRagFilters | None = None  # nested form sent by the Open WebUI Pipe
     act: list[str] = Field(default_factory=list)
     status: list[str] = Field(default_factory=list)
     access_level: list[str] = Field(default_factory=list)

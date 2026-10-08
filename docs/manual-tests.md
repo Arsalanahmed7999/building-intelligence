@@ -35,12 +35,11 @@ Expected (Story 2.3, needs `.env` credentials): `"status":"ok"` with ranked pass
 ### Query — hybrid
 
 ```bash
-curl -s http://127.0.0.1:8000/v1/query \
-  -H "Content-Type: application/json" \
-  -d '{"question": "What is theft?", "pattern": "hybrid"}'
+curl -s http://127.0.0.1:8000/v1/query -H "Content-Type: application/json" \
+  -d '{"question": "criminal breach of trust", "pattern": "hybrid", "limit": 3}'
 ```
 
-Expected: `"status":"not_implemented"`, message references `hybrid`.
+Expected (Story 4.1, needs the keyword index): `"status":"ok"`; see Story 4.1.
 
 ### Query — hybrid-reranked
 
@@ -97,7 +96,7 @@ Expected: 422 validation error (question below min_length 1).
 ```bash
 curl -s http://127.0.0.1:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{"model": "rag-semantic", "messages": [{"role": "user", "content": "What is theft?"}]}'
+  -d '{"model": "rag-hybrid-reranked", "messages": [{"role": "user", "content": "What is theft?"}]}'
 ```
 
 Expected: `"object":"chat.completion"`, `"finish_reason":"stop"`, content contains `not implemented yet`.
@@ -107,7 +106,7 @@ Expected: `"object":"chat.completion"`, `"finish_reason":"stop"`, content contai
 ```bash
 curl -s http://127.0.0.1:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{"model": "rag-semantic", "messages": [{"role": "user", "content": "What is theft?"}], "stream": true}'
+  -d '{"model": "rag-hybrid-reranked", "messages": [{"role": "user", "content": "What is theft?"}], "stream": true}'
 ```
 
 Expected: SSE `data:` frames with `delta` role then content, ending with `data: [DONE]`.
@@ -127,7 +126,7 @@ Expected: 400 with `"type":"invalid_request_error"`, `"code":"model_not_found"`.
 ```bash
 curl -s http://127.0.0.1:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{"model": "rag-semantic", "messages": [{"role": "system", "content": "You are helpful."}]}'
+  -d '{"model": "rag-hybrid-reranked", "messages": [{"role": "system", "content": "You are helpful."}]}'
 ```
 
 Expected: 400 with `"code":"missing_user_message"`.
@@ -205,7 +204,7 @@ Expected: HTTP 503, code `retrieval_not_ready`; not `no_results`.
 
 ### Other modes unchanged
 
-Run the hybrid query from Story 1.1. Expected: still `not_implemented`. Chat with `rag-semantic` still returns its placeholder.
+Run the hybrid-reranked query from Story 1.1. Expected: still `not_implemented`. Chat with `rag-hybrid-reranked` still returns its placeholder (`rag-semantic` is real since Story 3.2).
 
 
 ## Story 3.1 — Grounded Answer Generation
@@ -249,3 +248,67 @@ curl -s http://127.0.0.1:8000/v1/query -H "Content-Type: application/json" \
 ```
 
 Expected: `"status":"ok"`, `generation` null.
+
+## Story 3.2 — Streamed Answers with Confidence
+
+What it adds: `/v1/chat/completions` with `rag-semantic` runs the same retrieval and grounded generation as `/v1/query`, streaming a `DRAFT` answer followed by a confidence and sources footer.
+
+Prerequisite: Story 3.1 prerequisites; API running. If `CAPSTONE_API_KEY` is set in `.env`, add `-H "Authorization: Bearer <key>"` to the chat commands.
+
+```bash
+# 1. Streamed answer
+curl -sN http://127.0.0.1:8000/v1/chat/completions -H "Content-Type: application/json" \
+  -d '{"model":"rag-semantic","stream":true,"messages":[{"role":"user","content":"What is the punishment for theft under the BNS?"}]}' \
+  | grep '^data: ' | head -c 1500
+
+# 2. Same question via /v1/query (compare outcome and citations)
+curl -s http://127.0.0.1:8000/v1/query -H "Content-Type: application/json" \
+  -d '{"question": "What is the punishment for theft under the BNS?", "pattern": "semantic", "generate_answer": true}' \
+  | jq '{status, g: (.generation | {outcome, confidence, attempts, issues, citations: [.citations[] | {label, section_id}]})}'
+
+# 3. Unsupported question (non-streaming)
+curl -s http://127.0.0.1:8000/v1/chat/completions -H "Content-Type: application/json" \
+  -d '{"model":"rag-semantic","messages":[{"role":"user","content":"What is the GST rate on restaurant services?"}]}' \
+  | jq -r '.choices[0].message.content'
+
+# 4. Wrong key (failure; API started with CAPSTONE_API_KEY set)
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/v1/chat/completions \
+  -H "Content-Type: application/json" -H "Authorization: Bearer wrong" \
+  -d '{"model":"rag-semantic","messages":[{"role":"user","content":"theft"}]}'
+```
+
+Expected:
+1. `data:` frames for `rag-semantic`: `DRAFT — checking evidence`, answer text with `[E1]` labels, then `Evidence check passed — confidence: high` and `Sources:`; ends with `data: [DONE]`.
+2. `status` `ok`; `outcome` `answered`, `confidence` `high`, same citations as chat.
+3. One insufficient-evidence sentence; no confidence line.
+4. `401`.
+
+## Story 4.1 — Hybrid Search
+
+What it adds: `pattern: "hybrid"` (`rag-hybrid`) fuses Atlas Search keyword results on `chunks.text` with semantic results by reciprocal rank fusion.
+
+Prerequisite: Stories 2.1–3.2 data and `.env`; create the keyword index once, then start the API.
+
+```bash
+# 1. Create or reuse the keyword index (name and status only)
+uv run python -m building_with_rag.ingestion.keyword_index
+
+# 2. Hybrid query (shows which route found each passage)
+curl -s http://127.0.0.1:8000/v1/query -H "Content-Type: application/json" \
+  -d '{"question":"criminal breach of trust","pattern":"hybrid","limit":5}' \
+  | jq '{status, t: (.trace | {semantic, keyword, fusion, contribution}), r: [.results[] | {section_id, score, sr: .semantic_rank, kr: .keyword_rank, fr: .fused_rank, text: .text[:60]}]}'
+
+# 3. Hybrid chat (streamed)
+curl -sN http://127.0.0.1:8000/v1/chat/completions -H "Content-Type: application/json" \
+  -d '{"model":"rag-hybrid","stream":true,"messages":[{"role":"user","content":"criminal breach of trust"}]}' | head -c 1500
+
+# 4. Invalid scope (failure)
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/v1/query -H "Content-Type: application/json" \
+  -d '{"question":"theft","pattern":"hybrid","chapter":"XVII"}'
+```
+
+Expected:
+1. `chunk_text_index: READY`; a second run reuses it.
+2. `"status":"ok"`, at most 5 results with non-increasing `score` (equal to the fused score), `fr` equals position, each result has `sr` or `kr`; `trace` shows both routes, fusion, contribution.
+3. `DRAFT`, answer, confidence/sources footer or an insufficient-evidence sentence; ends with `data: [DONE]`.
+4. `422`.

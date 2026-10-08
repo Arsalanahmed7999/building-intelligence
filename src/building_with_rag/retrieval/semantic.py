@@ -107,9 +107,9 @@ def _validate_scope(request: QueryRequest) -> None:
     if request.caller_id is not None and request.caller_id != demo:
         raise RetrievalError(422, "invalid_caller", "caller_id is not permitted.")
     if request.required_acts is not None:
-        raise RetrievalError(422, "unsupported_option", "required_acts is not supported by semantic mode.")
+        raise RetrievalError(422, "unsupported_option", "required_acts is not supported by this mode.")
     if request.chapter is not None:
-        raise RetrievalError(422, "unsupported_option", "chapter is not supported by semantic mode.")
+        raise RetrievalError(422, "unsupported_option", "chapter is not supported by this mode.")
 
 
 def _embed_query(question: str) -> list[float]:
